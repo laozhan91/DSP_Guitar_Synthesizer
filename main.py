@@ -82,7 +82,7 @@ def run_default_mode():
     print(f"\n合成完成！输出文件: {output_path}")
 
 
-def run_play_mode():
+def run_play_mode(use_ir: bool = False, alpha: float = 0.7, rho: float = 0.997):
     """键盘演奏模式"""
     # 动态导入，避免不安装 pynput 时报错
     try:
@@ -92,7 +92,7 @@ def run_play_mode():
         print("请安装: pip install sounddevice pynput")
         sys.exit(1)
 
-    controller = KeyboardController()
+    controller = KeyboardController(use_ir=use_ir, alpha=alpha, rho=rho)
     controller.run()
 
 
@@ -107,6 +107,9 @@ def main():
     # 解析命令行参数
     parser = argparse.ArgumentParser(description="DSP Guitar Synthesizer")
     parser.add_argument("--play", action="store_true", help="开启键盘演奏模式")
+    parser.add_argument("--ir", action="store_true", help="演奏模式启用琴体 IR 卷积")
+    parser.add_argument("--alpha", type=float, default=0.7, help="演奏模式亮度（低通系数，越大越暗）")
+    parser.add_argument("--rho", type=float, default=0.997, help="演奏模式余音长度（越接近 1 越长）")
     parser.add_argument("--extract", action="store_true", help="单独执行频谱包络提取")
     args = parser.parse_args()
 
@@ -122,7 +125,7 @@ def main():
 
     # 根据参数选择运行模式
     if args.play:
-        run_play_mode()
+        run_play_mode(use_ir=args.ir, alpha=args.alpha, rho=args.rho)
     else:
         run_default_mode()
 

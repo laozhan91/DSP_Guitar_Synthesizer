@@ -468,6 +468,137 @@ class Synthesizer:
         return chord_signal
 
     # --------------------------------------------------
+    # 6.5 Karplus-Strong 拨弦物理建模
+    # --------------------------------------------------
+
+    def synthesize_ks_note(
+        self,
+        frequency: float,
+        duration: float,
+        alpha: float = 0.7,
+        rho: float = 0.997,
+        ir: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """
+        Karplus-Strong (KS) 拨弦合成：延迟线 + 低通滤波 + 增益衰减。
+
+        原理:
+          - 延迟线长度 N = round(sample_rate / f0)，对应弦的基频周期
+          - 激励: 白噪声（模拟拨弦瞬间的宽带激励），幅度衰减到 0.3 避免过载
+          - 每采样一步: 输出延迟线当前值 -> 相邻两点加权平均（低通，模拟高频
+            能量耗散）-> 乘以 rho（能量衰减）-> 反馈回延迟线末端
+          - alpha 控制亮度（低通系数，越大越暗），rho 控制衰减长度（越接近 1 越长）
+          - 可选 ir: 琴体脉冲响应卷积，模拟共鸣箱体音色
+
+        参数:
+            frequency: 基频 (Hz)
+            duration:  时长 (秒)
+            alpha:     低通系数 (0.0 ~ 1.0)，0.5 为经典平均滤波
+            rho:       增益衰减系数 (0.0 ~ 1.0)，越接近 1 余音越长
+            ir:        可选琴体脉冲响应数组，非 None 时用 FFT 卷积
+
+        返回:
+            np.ndarray: float32 单声道信号，长度 = int(duration * sample_rate)
+        """
+        if frequency <= 0:
+            raise ValueError(f"频率必须为正: {frequency}")
+
+        n_delay = max(2, int(round(self.sample_rate / frequency)))
+        num_samples = int(duration * self.sample_rate)
+
+        # 激励: 白噪声，幅度衰减到 0.3 避免过载
+        rng = np.random.default_rng()
+        delay = (rng.standard_normal(n_delay) * 0.3).astype(np.float32)
+
+        output = np.zeros(num_samples, dtype=np.float32)
+
+        # 索引式环形缓冲，每采样 O(1)，避免 np.roll 的 O(N) 开销
+        idx = 0
+        for i in range(num_samples):
+            output[i] = delay[idx]
+
+            next_idx = idx + 1
+            if next_idx >= n_delay:
+                next_idx = 0
+
+            # 低通: 相邻两点加权平均，alpha 越大高频衰减越多（音色越暗）
+            filtered = (1.0 - alpha) * delay[idx] + alpha * delay[next_idx]
+
+            # 增益衰减后反馈回当前位置（覆盖已读出的值）
+            delay[idx] = np.float32(rho * filtered)
+
+            idx = next_idx
+
+        # 可选: 琴体 IR 卷积（FFT 卷积，截断回原始长度）
+        if ir is not None:
+            from scipy.signal import fftconvolve
+            output = fftconvolve(output, ir, mode='full')[:num_samples].astype(np.float32)
+
+        # 归一化到 [-1, 1]
+        peak = np.max(np.abs(output))
+        if peak > 0:
+            output = output / peak
+
+        return output.astype(np.float32)
+
+    def synthesize_ks_chord(
+        self,
+        frequencies: list,
+        duration: float,
+        strum_delay: float = 0.012,
+        alpha: float = 0.7,
+        rho: float = 0.997,
+        ir: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """
+        Karplus-Strong 扫弦和弦：每根弦按 strum_delay 错开起音后叠加。
+
+        参数:
+            frequencies: 各弦基频列表
+            duration:    时长 (秒)
+            strum_delay: 扫弦错位间隔 (秒)
+            alpha:       低通系数（亮度）
+            rho:         增益衰减系数（余音长度）
+            ir:          可选琴体脉冲响应（对混好的和弦整体卷积一次）
+
+        返回:
+            np.ndarray: float32 和弦信号，归一化到 ±0.9 防削波
+        """
+        chord_signal = np.zeros(int(duration * self.sample_rate), dtype=np.float32)
+
+        for i, freq in enumerate(frequencies):
+            # 每根弦单独合成（不在此处做琴体卷积）
+            note = self.synthesize_ks_note(
+                frequency=freq,
+                duration=duration,
+                alpha=alpha,
+                rho=rho,
+            )
+
+            offset_samples = max(0, int(round(i * strum_delay * self.sample_rate)))
+            if offset_samples >= len(chord_signal):
+                continue
+
+            end = offset_samples + len(note)
+            if end > len(chord_signal):
+                note = note[: len(chord_signal) - offset_samples]
+
+            chord_signal[offset_samples: offset_samples + len(note)] += note
+
+        # 琴体 IR 卷积：对混好的和弦整体应用一次（符合物理，避免逐弦固定梳状滤波）
+        if ir is not None:
+            from scipy.signal import fftconvolve
+            n = len(chord_signal)
+            chord_signal = fftconvolve(chord_signal, ir, mode='full')[:n].astype(np.float32)
+
+        # 归一化到 ±0.9，防止削波
+        peak = np.max(np.abs(chord_signal))
+        if peak > 0:
+            chord_signal = chord_signal / peak * 0.9
+
+        return chord_signal.astype(np.float32)
+
+    # --------------------------------------------------
     # 7. WAV 导出
     # --------------------------------------------------
 
@@ -576,6 +707,70 @@ CHORD_FREQUENCIES = {
     'F_major':  get_chord_frequencies('F', 'major'),
     'G_major':  get_chord_frequencies('G', 'major'),
 }
+
+
+# --------------------------------------------------
+# 便捷函数: 生成合成脉冲响应 (占位 IR)
+# --------------------------------------------------
+
+def generate_synthetic_ir(
+    duration: float = 0.004,
+    sample_rate: int = 44100,
+    n_modes: int = 16,
+    f_min: float = 100.0,
+    f_max: float = 1500.0,
+    seed: int = 0,
+) -> np.ndarray:
+    """
+    生成合成琴体脉冲响应 (IR)，短促低频暖色冲激。
+
+    设计要点（只做"木头暖色"，不做长共鸣，避免"空灵/混响"质感）:
+      - 极短时长 (默认 4ms)：只影响音头瞬间，不拖尾巴
+      - 低频占优：振幅随频率快速下降，突出低频温暖感
+      - 快速衰减：衰减率随频率上升（400~1200），模态在几毫秒内耗散
+      - 随机相位：避免整齐谐波叠加产生固定音高环
+
+    占位实现：后续可替换为真实吉他琴体录音的 IR。
+
+    参数:
+        duration:    IR 时长 (秒)，越短越不拖尾
+        sample_rate: 采样率 (Hz)
+        n_modes:     共振模态数量
+        f_min:       最低共振频率 (Hz)
+        f_max:       最高共振频率 (Hz)
+        seed:        随机相位种子（保证可复现）
+
+    返回:
+        np.ndarray: float32 归一化 IR 数组，长度 = int(duration * sample_rate)
+    """
+    rng = np.random.default_rng(seed)
+
+    # 密集模态频率，对数刻度均匀分布
+    freqs = np.geomspace(f_min, f_max, n_modes)
+
+    # 振幅随频率快速下降：低频占优，突出温暖感
+    amplitudes = (freqs / f_min) ** -0.7
+
+    # 衰减率随频率上升：高频更快衰减，整体快速耗散避免拖尾
+    decays = 400.0 + (freqs - f_min) / (f_max - f_min) * 800.0  # 400 ~ 1200
+
+    # 随机相位，避免整齐的谐波叠加
+    phases = rng.uniform(0.0, 2.0 * np.pi, n_modes)
+
+    n = int(duration * sample_rate)
+    t = np.arange(n, dtype=np.float32) / sample_rate
+
+    ir = np.zeros(n, dtype=np.float32)
+    for f, d, a, p in zip(freqs, decays, amplitudes, phases):
+        # 指数衰减正弦模态: a * exp(-d*t) * sin(2*pi*f*t + p)
+        ir += (a * np.exp(-d * t) * np.sin(2.0 * np.pi * f * t + p)).astype(np.float32)
+
+    # 归一化到 [-1, 1]
+    peak = np.max(np.abs(ir))
+    if peak > 0:
+        ir = ir / peak
+
+    return ir.astype(np.float32)
 
 
 if __name__ == '__main__':

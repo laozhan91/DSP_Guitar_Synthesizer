@@ -6,7 +6,7 @@ from pynput import keyboard
 import threading
 
 import config
-from .synthesizer import Synthesizer, CHORD_FREQUENCIES
+from .synthesizer import Synthesizer, CHORD_FREQUENCIES, generate_synthetic_ir
 
 # 键位与和弦的映射关系
 KEY_CHORD_MAP = {
@@ -17,10 +17,17 @@ KEY_CHORD_MAP = {
 }
 
 class KeyboardController:
-    def __init__(self):
+    def __init__(self, use_ir: bool = False, alpha: float = 0.7, rho: float = 0.997):
         # 初始化合成器
         self.synth = Synthesizer(sample_rate=config.SAMPLE_RATE)
-        
+
+        # 可选琴体 IR（短促低频暖色冲激）
+        self.ir = generate_synthetic_ir(sample_rate=config.SAMPLE_RATE) if use_ir else None
+
+        # KS 合成参数
+        self.alpha = alpha
+        self.rho = rho
+
         # 音频流缓冲区与锁
         self.active_voices = {}  # {chord_name: {'pos': int, 'buffer': array}}
         self.lock = threading.Lock()
@@ -60,12 +67,15 @@ class KeyboardController:
         """触发和弦合成并加入播放队列"""
         if chord_name not in CHORD_FREQUENCIES:
             return
-            
+
         freqs = CHORD_FREQUENCIES[chord_name]
-        # 使用与 simulated_guitar 一致的吉他拨弦物理模型
-        audio = self.synth.synthesize_guitar_chord(
+        # 使用 Karplus-Strong 拨弦物理模型（可选琴体 IR）
+        audio = self.synth.synthesize_ks_chord(
             frequencies=freqs,
             duration=2.0,
+            alpha=self.alpha,
+            rho=self.rho,
+            ir=self.ir,
         )
         
         with self.lock:
@@ -105,6 +115,7 @@ class KeyboardController:
                                  dtype='float32', callback=self._audio_callback)
         stream.start()
         
+        print(f"琴体 IR: {'启用' if self.ir is not None else '关闭'} | alpha: {self.alpha} | rho: {self.rho}")
         print("键盘演奏模式已启动！按下 A/S/D/F 键弹奏和弦。按 Esc 退出。")
         
         # 监听键盘，按 Esc 退出
