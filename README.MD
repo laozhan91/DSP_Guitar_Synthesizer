@@ -187,7 +187,7 @@ DSP_Guitar_Synthesizer/
 ├── requirements.txt               # 依赖清单
 ├── README.MD                      # 本文件
 ├── dsp_guitar_core/               # 核心 DSP 包
-│   ├── _init_.py                  # 包聚合导出
+│   ├── __init__.py                # 包聚合导出
 │   ├── synthesizer.py             # 合成器核心（KS 算法）
 │   ├── extract_envelope.py        # 频谱包络提取
 │   ├── keyboard_controller.py     # 实时键盘演奏

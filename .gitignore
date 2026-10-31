@@ -1,0 +1,12 @@
+# Python 编译缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+.venv/
+venv/
+
+# 生成输出
+assets/synthesized/
+output/

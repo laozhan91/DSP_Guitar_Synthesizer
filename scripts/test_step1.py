@@ -1,8 +1,15 @@
 import os
+import sys
+
+# 确保项目根目录在路径中
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from dsp_guitar_core.utils import load_wav, plot_waveform, plot_spectrum_with_envelope
 
 if __name__ == "__main__":
-    assets_dir = "assets"
+    assets_dir = os.path.join(project_root, "assets")
     
     # 1. 获取文件夹中所有的 wav 文件
     wav_files = [f for f in os.listdir(assets_dir) if f.endswith(".wav")]

@@ -29,7 +29,7 @@ from typing import Tuple
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 
@@ -278,7 +278,7 @@ def main():
                         help='原始吉他 WAV 文件路径')
     parser.add_argument('--synthesized', '-s', type=str, required=True,
                         help='合成吉他 WAV 文件路径')
-    parser.add_argument('--output-dir', '-o', type=str, default='output',
+    parser.add_argument('--output-dir', '-d', type=str, default='output',
                         help='图表输出目录')
 
     args = parser.parse_args()

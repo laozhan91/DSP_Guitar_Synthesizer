@@ -23,7 +23,7 @@ import argparse
 import numpy as np
 
 # 确保项目根目录在路径中
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from dsp_guitar_core.synthesizer import Synthesizer, CHORD_FREQUENCIES

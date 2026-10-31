@@ -5,16 +5,10 @@
     python generate_simulated_guitar.py
     python generate_simulated_guitar.py --chord A_minor --output assets/simulated_guitar_A_minor.wav
 """
-import sys
 import argparse
 import os
 import numpy as np
 from scipy.io import wavfile
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-import config
-from dsp_guitar_core.synthesizer import generate_guitar_note
-from dsp_guitar_core.utils import save_wav
 
 # 常见和弦基频，单位 Hz
 CHORD_FREQUENCIES = {
