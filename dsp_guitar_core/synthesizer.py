@@ -208,6 +208,9 @@ class Synthesizer:
         """
         from scipy.interpolate import interp1d
 
+        # 用完整信号长度做 FFT，避免只处理前 n_fft 个采样导致静音段
+        n_fft = max(n_fft, len(signal))
+
         # 做 FFT
         spectrum = np.fft.rfft(signal, n=n_fft)
 
@@ -220,6 +223,7 @@ class Synthesizer:
             interp_func = interp1d(orig_freqs, spectral_envelope, kind='linear',
                                    fill_value='extrapolate')
             envelope_interp = interp_func(target_freqs)
+            envelope_interp = np.clip(envelope_interp, 0.0, None)
         else:
             envelope_interp = spectral_envelope.copy()
 
@@ -361,7 +365,110 @@ class Synthesizer:
         return mixed_signal
 
     # --------------------------------------------------
-    # 6. WAV 导出
+    # 6. 吉他拨弦物理建模合成（与 simulated_guitar 一致）
+    # --------------------------------------------------
+
+    def synthesize_guitar_note(
+        self,
+        frequency: float,
+        duration: float,
+        attack: float = 0.005,
+        decay: float = 0.35,
+        sustain_level: float = 0.25,
+        release: float = 0.15,
+    ) -> np.ndarray:
+        """
+        模拟单根吉他弦的拨弦声音。
+
+        与 scripts/generate_simulated_guitar.py 中 generate_guitar_note 一致：
+        正弦基频 + 少量高次泛音 + 吉他 ADSR + 轻微频散，
+        得到自然、不刺耳的拨弦音色。
+        """
+        t = np.arange(0, duration, 1.0 / self.sample_rate, dtype=np.float32)
+
+        # 轻微频散，避免多个正弦波叠加后过于“纯音”
+        freq_offset = frequency * 0.001
+        phase = 2.0 * np.pi * (frequency + freq_offset) * t
+
+        signal = np.sin(phase)
+        # 加入少量高次谐波，模拟弦振动的泛音
+        signal += 0.18 * np.sin(2.0 * phase)
+        signal += 0.07 * np.sin(3.0 * phase)
+
+        # ADSR 包络
+        total_samples = len(t)
+        attack_samples = max(1, int(attack * self.sample_rate))
+        decay_samples = max(1, int(decay * self.sample_rate))
+        release_samples = max(1, int(release * self.sample_rate))
+
+        sustain_samples = total_samples - attack_samples - decay_samples - release_samples
+        if sustain_samples < 0:
+            sustain_samples = 0
+
+        envelope = np.zeros(total_samples, dtype=np.float32)
+
+        if attack_samples > 0:
+            envelope[:attack_samples] = np.linspace(0.0, 1.0, attack_samples)
+
+        decay_end = attack_samples + decay_samples
+        if decay_samples > 0:
+            envelope[attack_samples:decay_end] = np.linspace(
+                1.0, sustain_level, decay_samples
+            )
+
+        sustain_end = decay_end + sustain_samples
+        if sustain_samples > 0:
+            envelope[decay_end:sustain_end] = sustain_level
+
+        if release_samples > 0:
+            release_start = max(decay_end, total_samples - release_samples)
+            release_len = total_samples - release_start
+            if release_len > 0:
+                envelope[release_start:] = np.linspace(
+                    sustain_level, 0.0, release_len
+                )
+
+        signal = signal * envelope
+
+        # 归一化到 [-1, 1]
+        peak = np.max(np.abs(signal))
+        if peak > 0:
+            signal = signal / peak
+
+        return signal
+
+    def synthesize_guitar_chord(
+        self,
+        frequencies: list,
+        duration: float,
+        strum_delay: float = 0.012,
+    ) -> np.ndarray:
+        """模拟吉他扫弦和弦：每根弦略微错开起音时间。"""
+        chord_signal = np.zeros(int(duration * self.sample_rate), dtype=np.float32)
+
+        for i, freq in enumerate(frequencies):
+            note = self.synthesize_guitar_note(freq, duration)
+
+            offset_samples = max(0, int(round(i * strum_delay * self.sample_rate)))
+
+            if offset_samples >= len(chord_signal):
+                continue
+
+            end = offset_samples + len(note)
+            if end > len(chord_signal):
+                note = note[: len(chord_signal) - offset_samples]
+
+            chord_signal[offset_samples: offset_samples + len(note)] += note
+
+        # 多弦叠加后重新归一化，避免削波
+        peak = np.max(np.abs(chord_signal))
+        if peak > 0:
+            chord_signal = chord_signal / peak
+
+        return chord_signal
+
+    # --------------------------------------------------
+    # 7. WAV 导出
     # --------------------------------------------------
 
     @staticmethod

@@ -6,7 +6,7 @@
     python extract_envelope.py --input assets/guitar-chord-in-a-minor.wav
     python extract_envelope.py --input assets/guitar-chord-in-a-minor.wav --output assets/guitar_envelope_data.npy
 """
-
+import config
 import argparse
 import os
 import numpy as np
@@ -142,7 +142,7 @@ def compute_spectral_envelope(audio: np.ndarray,
 
 def save_envelope_data(envelope_data: dict, output_path: str):
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    np.save(output_path, envelope_data)
+    np.savez(output_path, **envelope_data)
     print(f"✅ 频谱包络已保存至: {output_path}")
 
 
@@ -153,13 +153,13 @@ def main():
     parser.add_argument(
         "--input",
         type=str,
-        default="assets/guitar-chord-in-a-minor.wav",
+        default=config.SIMULATED_GUITAR_OUTPUT,  # ← 从 config 读取
         help="输入吉他 WAV 文件路径",
     )
     parser.add_argument(
         "--output",
         type=str,
-        default="assets/guitar_envelope_data.npy",
+        default=config.ENVELOPE_DATA_PATH,  # ← 从 config 读取
         help="输出包络数据 npy 路径",
     )
     parser.add_argument(
