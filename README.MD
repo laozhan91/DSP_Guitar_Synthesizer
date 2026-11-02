@@ -7,7 +7,7 @@
 项目流程分为两个阶段：
 
 1. **频谱包络提取**：从吉他 WAV 中提取「音色指纹」（频谱包络）
-2. **拨弦合成**：Karplus-Strong 延迟线算法合成吉他拨弦/扫弦声音，可选琴体 IR 卷积
+2. **拨弦合成**：Karplus-Strong 延迟线算法合成吉他拨弦/扫弦声音，支持离线导出 WAV 与实时流式键盘演奏，可选琴体 IR 卷积
 
 ## 快速开始
 
@@ -33,6 +33,7 @@ python main.py --play
 | `python main.py --play --ir` | 键盘实时演奏（带短促暖色 IR） |
 | `python main.py --extract` | 单独执行频谱包络提取 |
 | `python scripts/generate_ks_audio.py` | 生成 KS 合成 WAV（供 A/B 听感对比） |
+| `python scripts/test_streaming.py` | 无头流式合成测试（不依赖键盘） |
 
 ```powershell
 # 演奏模式完整参数示例
@@ -41,12 +42,15 @@ python main.py --play --alpha 0.4 --rho 0.995 --ir
 
 ### 键盘演奏键位
 
-| 按键 | 和弦 |
-|---|---|
-| `A` | A_minor |
-| `S` | C_major |
-| `D` | G_major |
-| `F` | F_major |
+演奏方式贴近真实吉他：左手按和弦，右手扫弦。
+
+| 按键 | 动作 | 说明 |
+|---|---|---|
+| `A` / `S` / `D` / `F` | 按住和弦 | A_minor / C_major / G_major / F_major，按下不发声 |
+| `.` | 下扫 | 低音弦先响 → 高音弦 |
+| `,` | 上扫 | 高音弦先响 → 低音弦 |
+| 松开字母键 | 制音 | 该和弦余音快速衰减 |
+| 未按和弦时按 `.` / `,` | 扫空弦 | 扫标准调弦 EADGBE 六根空弦 |
 
 按 `Esc` 退出演奏模式。
 
@@ -69,7 +73,7 @@ python main.py --play --alpha 0.4 --rho 0.995 --ir
                           │
             ┌─────────────┴─────────────┐
             ▼                           ▼
-   WAV 导出（generate_ks_audio.py）  实时演奏（keyboard_controller.py）
+   WAV 导出（generate_ks_audio.py）  实时流式演奏（keyboard_controller.py + streaming_synth.py）
 ```
 
 **演奏模式调用链**：
@@ -77,10 +81,10 @@ python main.py --play --alpha 0.4 --rho 0.995 --ir
 ```
 main.py --play [--ir] [--alpha X] [--rho Y]
   └─▶ KeyboardController(use_ir=..., alpha=..., rho=...)
-        └─▶ _play_chord() 按键触发
-              └─▶ synthesize_ks_chord(freqs, 2.0, alpha=..., rho=..., ir=...)
-                    └─▶ synthesize_ks_note() × N（每根弦）
-                          └─▶ [整体卷积 IR 一次] → 混音 → 音频流输出
+        └─▶ 键盘事件 → PerformanceStateMachine（演奏状态机）
+              └─▶ StrumCommand / MuteCommand → StreamingGuitarSynth
+                    └─▶ KSVoice × 弦数（每根弦常驻延迟线状态）
+                          └─▶ 回调逐块向量化推进 → 混音 → 软限幅 → 音频流输出
 ```
 
 ## Karplus-Strong 算法原理
@@ -115,7 +119,8 @@ $$
 | `alpha` | 0.0 ~ 1.0 | 低通系数 | 越大越暗，越小越亮 |
 | `rho` | 0.0 ~ 1.0 | 增益衰减 | 越接近 1 余音越长 |
 
-> 实现见 `dsp_guitar_core/synthesizer.py` 的 `synthesize_ks_note()`，使用**索引式环形缓冲**做到每采样 O(1)，避免 `np.roll` 的 O(N) 开销。
+> 离线实现见 `dsp_guitar_core/synthesizer.py` 的 `synthesize_ks_note()`，使用**索引式环形缓冲**做到每采样 O(1)，避免 `np.roll` 的 O(N) 开销。
+> 实时演奏由 `dsp_guitar_core/streaming_synth.py` 的 `KSVoice.render()` 在音频回调内按 **block 级 numpy 向量化**推进，与逐样本递推逐点等价，并受声部上限 `config.MAX_VOICES` 保护。
 
 ## 琴体 IR 卷积
 
@@ -176,6 +181,7 @@ python scripts/generate_ks_audio.py --alpha 0.4 --rho 0.995 --chord A_minor --ir
 | `ir` | 琴体 IR 开关 | 关 | `--ir` 命令行 |
 | `alpha` | 亮度（低通系数） | 0.7 | `--alpha 0.4` 命令行 |
 | `rho` | 余音长度 | 0.997 | `--rho 0.995` 命令行 |
+| 扫弦力度 | 固定 0.6 | `config.DEFAULT_VELOCITY` | 改 `config.py`（后续计划按键速度映射） |
 
 ## 目录结构
 
@@ -188,9 +194,11 @@ DSP_Guitar_Synthesizer/
 ├── README.MD                      # 本文件
 ├── dsp_guitar_core/               # 核心 DSP 包
 │   ├── __init__.py                # 包聚合导出
-│   ├── synthesizer.py             # 合成器核心（KS 算法）
+│   ├── synthesizer.py             # 合成器核心（离线 KS 算法）
+│   ├── streaming_synth.py         # 流式实时合成引擎（逐块 KS）
+│   ├── performance.py             # 演奏状态机（按键 → 命令）
 │   ├── extract_envelope.py        # 频谱包络提取
-│   ├── keyboard_controller.py     # 实时键盘演奏
+│   ├── keyboard_controller.py     # 实时键盘演奏（接入流式引擎）
 │   └── utils.py                   # 通用工具（读写/FFT/绘图）
 ├── scripts/                       # 生成与测试脚本
 │   ├── generate_ks_audio.py       # KS 合成 WAV（本轮新增）
@@ -198,7 +206,8 @@ DSP_Guitar_Synthesizer/
 │   ├── generate_synthesized_audio.py
 │   ├── generate_test_audio.py
 │   ├── test_step1.py
-│   └── test_step2.py
+│   ├── test_step2.py
+│   └── test_streaming.py          # 流式合成无头测试
 └── assets/                        # 素材与输出
     ├── *.wav                      # 真实吉他采样
     ├── guitar_envelope_data.npz   # 提取的频谱包络
@@ -217,6 +226,7 @@ DSP_Guitar_Synthesizer/
 | `generate_test_audio.py` | 生成含泛音的测试音频 |
 | `test_step1.py` | 分析 WAV 并画频谱包络图 |
 | `test_step2.py` | 对比真实 vs 合成音频频谱 |
+| `test_streaming.py` | 无头流式合成测试（统计 xrun/CPU 负载） |
 
 ## 依赖
 

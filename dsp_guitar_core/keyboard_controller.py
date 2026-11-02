@@ -1,14 +1,16 @@
-# [交互控制] 负责监听键盘事件，映射按键到音符频率
+# [交互控制] 监听键盘，把按键映射为演奏动作（状态机 + 流式合成引擎）
 # dsp_guitar_core/keyboard_controller.py
-import numpy as np
 import sounddevice as sd
 from pynput import keyboard
-import threading
 
 import config
-from .synthesizer import Synthesizer, CHORD_FREQUENCIES, generate_synthetic_ir
+from .synthesizer import CHORD_FREQUENCIES, OPEN_STRING_FREQUENCIES
+from .performance import (
+    PerformanceStateMachine, StrumCommand, MuteCommand,
+)
+from .streaming_synth import StreamingGuitarSynth
 
-# 键位与和弦的映射关系
+# 键位与和弦的映射关系（左手）
 KEY_CHORD_MAP = {
     'a': 'A_minor',
     's': 'C_major',
@@ -16,112 +18,118 @@ KEY_CHORD_MAP = {
     'f': 'F_major',
 }
 
+# 扫弦键（右手）：直接按 ',' 与 '.'，无需 Shift
+STRUM_UP_CHAR = ','    # 上扫（高音弦先响）
+STRUM_DOWN_CHAR = '.'  # 下扫（低音弦先响）
+
+
 class KeyboardController:
-    def __init__(self, use_ir: bool = False, alpha: float = 0.7, rho: float = 0.997):
-        # 初始化合成器
-        self.synth = Synthesizer(sample_rate=config.SAMPLE_RATE)
-
-        # 可选琴体 IR（短促低频暖色冲激）
-        self.ir = generate_synthetic_ir(sample_rate=config.SAMPLE_RATE) if use_ir else None
-
-        # KS 合成参数
+    def __init__(self, use_ir: bool = False, alpha: float = 0.7,
+                 rho: float = 0.997, velocity: float = None):
+        # 流式合成引擎（DSP 全部在音频回调线程内执行）
+        self.engine = StreamingGuitarSynth(
+            sample_rate=config.SAMPLE_RATE,
+            alpha=alpha,
+            rho=rho,
+            master_gain=config.MASTER_GAIN,
+            energy_threshold=config.VOICE_ENERGY_THRESHOLD,
+            strum_delay=config.STRUM_DELAY,
+            use_ir=use_ir,
+            max_voices=config.MAX_VOICES,
+        )
+        self.use_ir = use_ir
         self.alpha = alpha
         self.rho = rho
+        self.velocity = config.DEFAULT_VELOCITY if velocity is None else velocity
 
-        # 音频流缓冲区与锁
-        self.active_voices = {}  # {chord_name: {'pos': int, 'buffer': array}}
-        self.lock = threading.Lock()
-        self.pressed_keys = set() # 防止按键连发
-
-    def _audio_callback(self, outdata, frames, time, status):
-        """音频底层回调，负责混音和输出"""
-        if status:
-            print(status)
-        
-        # 初始化当前帧缓冲
-        buf = np.zeros(frames, dtype=np.float32)
-        finished_keys = []
-        
-        with self.lock:
-            for k, voice in self.active_voices.items():
-                start = voice['pos']
-                end = start + frames
-                data = voice['buffer'][start:end]
-                
-                # 混音叠加
-                buf[:len(data)] += data
-                voice['pos'] += len(data)
-                
-                # 检查是否播放完毕
-                if voice['pos'] >= len(voice['buffer']):
-                    finished_keys.append(k)
-                    
-        # 清理已播放完毕的和弦
-        for k in finished_keys:
-            del self.active_voices[k]
-            
-        # 限制音量，防止削波
-        outdata[:, 0] = np.clip(buf, -1.0, 1.0)
-
-    def _play_chord(self, chord_name):
-        """触发和弦合成并加入播放队列"""
-        if chord_name not in CHORD_FREQUENCIES:
-            return
-
-        freqs = CHORD_FREQUENCIES[chord_name]
-        # 使用 Karplus-Strong 拨弦物理模型（可选琴体 IR）
-        audio = self.synth.synthesize_ks_chord(
-            frequencies=freqs,
-            duration=2.0,
-            alpha=self.alpha,
-            rho=self.rho,
-            ir=self.ir,
+        # 演奏状态机：把按键事件翻译成引擎命令
+        self.state_machine = PerformanceStateMachine(
+            chord_freqs=CHORD_FREQUENCIES,
+            open_freqs=OPEN_STRING_FREQUENCIES,
         )
-        
-        with self.lock:
-            # 如果已经在播放则重置位置
-            if chord_name in self.active_voices:
-                self.active_voices[chord_name]['pos'] = 0
-            else:
-                self.active_voices[chord_name] = {
-                    'buffer': audio.astype(np.float32),
-                    'pos': 0
-                }
 
+        self.pressed_keys = set()  # 防止按键连发（pynput 按住会重复 on_press）
+
+    # --------------------------------------------------
+    # 音频回调
+    # --------------------------------------------------
+    def _audio_callback(self, outdata, frames, time, status):
+        if status:
+            print(status, flush=True)
+        self.engine.process(outdata, frames)
+
+    # --------------------------------------------------
+    # 命令分发：状态机输出 -> 引擎
+    # --------------------------------------------------
+    def _dispatch(self, cmds):
+        for cmd in cmds:
+            if isinstance(cmd, StrumCommand):
+                self.engine.strum(cmd)
+            elif isinstance(cmd, MuteCommand):
+                self.engine.mute(cmd)
+
+    def _do_strum(self, direction):
+        self._dispatch(self.state_machine.handle_strum(direction, self.velocity))
+
+    def _do_chord_press(self, name):
+        self._dispatch(self.state_machine.handle_chord_press(name))
+
+    def _do_chord_release(self, name):
+        self._dispatch(self.state_machine.handle_chord_release(name))
+
+    # --------------------------------------------------
+    # 键盘事件
+    # --------------------------------------------------
     def on_press(self, key):
-        """键盘按下事件"""
         if key == keyboard.Key.esc:
             return False  # 返回 False 停止监听，退出演奏模式
+
         try:
             char = key.char.lower()
-            if char in KEY_CHORD_MAP and char not in self.pressed_keys:
-                self.pressed_keys.add(char)
-                self._play_chord(KEY_CHORD_MAP[char])
         except AttributeError:
-            pass
+            return
+
+        if char in (STRUM_UP_CHAR, STRUM_DOWN_CHAR):
+            if char not in self.pressed_keys:
+                self.pressed_keys.add(char)
+                direction = 'up' if char == STRUM_UP_CHAR else 'down'
+                self._do_strum(direction)
+        elif char in KEY_CHORD_MAP and char not in self.pressed_keys:
+            self.pressed_keys.add(char)
+            self._do_chord_press(KEY_CHORD_MAP[char])
 
     def on_release(self, key):
-        """键盘松开事件"""
         try:
             char = key.char.lower()
-            if char in self.pressed_keys:
-                self.pressed_keys.discard(char)
         except AttributeError:
-            pass
+            return
+        if char in self.pressed_keys:
+            self.pressed_keys.discard(char)
+        if char in KEY_CHORD_MAP:
+            self._do_chord_release(KEY_CHORD_MAP[char])
 
+    # --------------------------------------------------
+    # 启动
+    # --------------------------------------------------
     def run(self):
-        """启动音频流与键盘监听"""
-        stream = sd.OutputStream(samplerate=config.SAMPLE_RATE, channels=1, 
-                                 dtype='float32', callback=self._audio_callback)
+        stream = sd.OutputStream(
+            samplerate=config.SAMPLE_RATE,
+            channels=1,
+            dtype='float32',
+            blocksize=config.BLOCK_SIZE,
+            callback=self._audio_callback,
+        )
         stream.start()
-        
-        print(f"琴体 IR: {'启用' if self.ir is not None else '关闭'} | alpha: {self.alpha} | rho: {self.rho}")
-        print("键盘演奏模式已启动！按下 A/S/D/F 键弹奏和弦。按 Esc 退出。")
-        
-        # 监听键盘，按 Esc 退出
+
+        print(f"琴体 IR: {'启用' if self.use_ir else '关闭'} | alpha: {self.alpha} | rho: {self.rho} | 力度: {self.velocity:.2f}")
+        print("演奏模式已启动：")
+        print("  左手 A/S/D/F = 按住和弦（不发声）")
+        print("  右手 . = 下扫  , = 上扫（没按和弦时扫空弦）")
+        print("  松开字母键 = 制音；按 Esc 退出")
+
         listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         listener.start()
-        
+
         listener.join()
         stream.stop()
         stream.close()
