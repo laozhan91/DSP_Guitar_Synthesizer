@@ -1,11 +1,15 @@
 """演奏界面 + 实时频谱"""
+import math
+
 import numpy as np
 import pygame
 
 import config
 from GUI.screens.base import Screen
 from GUI.theme import BG, TEXT, MUTED_TEXT, ACCENT, load_font
+from dsp_guitar_core.fingering import CHORD_FINGERING
 from dsp_guitar_core.performance import PerformanceStateMachine, StrumCommand, MuteCommand
+from dsp_guitar_core.rhythm import PATTERN_NAMES
 from dsp_guitar_core.synthesizer import CHORD_FREQUENCIES, OPEN_STRING_FREQUENCIES
 
 KEY_CHORD = {
@@ -28,6 +32,7 @@ class PlayScreen(Screen):
         self.big_font = load_font(30)
         self.small_font = load_font(16)
         self.state_machine = PerformanceStateMachine(CHORD_FREQUENCIES, OPEN_STRING_FREQUENCIES)
+        self._held = []  # 按住的左手和弦（支持多键换弦）
         self._win = np.hanning(SPEC_N).astype(np.float32)
         self._edges = np.geomspace(F_MIN, F_MAX, N_BARS + 1)
         self._freqs = np.fft.rfftfreq(SPEC_N, d=1.0 / config.SAMPLE_RATE)
@@ -39,10 +44,25 @@ class PlayScreen(Screen):
             np.searchsorted(self._edges, self._freqs, side='right') - 1,
             0, N_BARS - 1)
 
+        # G-3 吉他指板动画状态
+        self._anim_t = 0.0
+        self._string_exc = np.zeros(6, dtype=np.float32)
+        self._str_freq = [2.5 + 0.5 * i for i in range(6)]
+        self._str_phase = [0.0, 1.3, 2.4, 0.7, 2.9, 1.7]
+        self._last_strum_count = self.ctx.rhythm.strum_count
+        self._arrow_dir = None
+        self._arrow_timer = 0.0
+
     def on_enter(self):
         # 自动演奏暂不启用：后续加入歌曲音频后，再按需创建 SongSequencer 挂到 ctx.sequencer
         self.state_machine = PerformanceStateMachine(CHORD_FREQUENCIES, OPEN_STRING_FREQUENCIES)
+        self._held = []
+        self.ctx.rhythm.set_chord(None)
         self.ctx.sequencer = None
+        self._string_exc[:] = 0.0
+        self._arrow_dir = None
+        self._arrow_timer = 0.0
+        self._last_strum_count = self.ctx.rhythm.strum_count
 
     def _dispatch(self, cmd):
         if isinstance(cmd, StrumCommand):
@@ -50,34 +70,75 @@ class PlayScreen(Screen):
         elif isinstance(cmd, MuteCommand):
             self.ctx.engine.mute(cmd)
 
-    def _strum(self, direction):
-        for cmd in self.state_machine.handle_strum(direction, self.ctx.velocity):
+    def _chord_down(self, name):
+        if name in self._held:
+            return
+        self._held.append(name)
+        for cmd in self.state_machine.handle_chord_press(name):
             self._dispatch(cmd)
+        self.ctx.rhythm.set_chord(name)
+
+    def _chord_up(self, name):
+        if name not in self._held:
+            return
+        self._held.remove(name)
+        active = self._held[-1] if self._held else None
+        if active is None:
+            for cmd in self.state_machine.handle_chord_release(name):
+                self._dispatch(cmd)
+            self.ctx.rhythm.set_chord(None)
+        elif active != name:
+            # 回到之前还按着的和弦（换弦回落）
+            for cmd in self.state_machine.handle_chord_press(active):
+                self._dispatch(cmd)
+            self.ctx.rhythm.set_chord(active)
+
+    def _cycle_pattern(self, d):
+        names = PATTERN_NAMES
+        i = names.index(self.ctx.rhythm.pattern)
+        self.ctx.rhythm.set_pattern(names[(i + d) % len(names)])
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 return 'switch:song_select'
             if event.key in KEY_CHORD:
-                for cmd in self.state_machine.handle_chord_press(KEY_CHORD[event.key]):
-                    self._dispatch(cmd)
+                self._chord_down(KEY_CHORD[event.key])
                 return None
-            if event.key in (pygame.K_SPACE, pygame.K_PERIOD):
-                self._strum('down')
-            elif event.key == pygame.K_COMMA:
-                self._strum('up')
+            if event.key == pygame.K_LEFTBRACKET:
+                self._cycle_pattern(-1)
+            elif event.key == pygame.K_RIGHTBRACKET:
+                self._cycle_pattern(1)
+            elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                self.ctx.rhythm.set_bpm(max(60, self.ctx.rhythm.bpm - 10))
+            elif event.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
+                self.ctx.rhythm.set_bpm(min(200, self.ctx.rhythm.bpm + 10))
         elif event.type == pygame.KEYUP:
             if event.key in KEY_CHORD:
-                for cmd in self.state_machine.handle_chord_release(KEY_CHORD[event.key]):
-                    self._dispatch(cmd)
+                self._chord_up(KEY_CHORD[event.key])
         return None
 
     def update(self, dt):
-        pass
+        self._anim_t += dt
+        if self.ctx.rhythm.strum_count != self._last_strum_count:
+            self._last_strum_count = self.ctx.rhythm.strum_count
+            self._arrow_dir = self.ctx.rhythm.last_direction
+            self._arrow_timer = 0.35
+            self._pluck(self.ctx.rhythm.last_direction)
+        self._string_exc *= np.exp(-dt * 6.0)
+        self._arrow_timer = max(0.0, self._arrow_timer - dt)
+
+    def _pluck(self, direction):
+        if direction == 'down':
+            w = np.array([1.0, 0.85, 0.72, 0.60, 0.50, 0.42], dtype=np.float32)
+        else:
+            w = np.array([0.42, 0.50, 0.60, 0.72, 0.85, 1.0], dtype=np.float32)
+        self._string_exc = np.maximum(self._string_exc, w)
 
     # ---- 布局常量（屏幕 960x540）----
-    PANEL = (60, 86, 840, 240)          # 频谱卡片
-    WF_PANEL = (60, 338, 840, 160)      # STFT 瀑布图卡片
+    PANEL = (60, 86, 560, 240)          # 频谱卡片
+    WF_PANEL = (60, 338, 560, 160)      # STFT 瀑布图卡片
+    GUITAR_PANEL = (640, 86, 260, 412)  # 吉他指板面板
     AXIS_LEFT, AXIS_RIGHT, AXIS_TOP, AXIS_BOTTOM = 52, 10, 30, 28
     WF_AXIS_LEFT, WF_AXIS_RIGHT, WF_AXIS_TOP, WF_AXIS_BOTTOM = 46, 8, 24, 4
     DB_MIN, DB_MAX = -80.0, 0.0
@@ -96,10 +157,11 @@ class PlayScreen(Screen):
         title = self.big_font.render(title_text, True, TEXT)
         surface.blit(title, (30, 20))
         hint = self.small_font.render(
-            'A/S/D/F 和弦  ·  空格/句号 下扫  ·  逗号 上扫  ·  Esc 返回', True, MUTED_TEXT)
+            'A/S/D/F 按住和弦自动扫弦  ·  [ ] 切换节奏  ·  -/= 调BPM  ·  Esc 返回', True, MUTED_TEXT)
         surface.blit(hint, (30, 54))
         self._draw_spectrum(surface)
         self._draw_waterfall(surface)
+        self._draw_guitar(surface)
         self._draw_status(surface)
 
     def _draw_spectrum(self, surface):
@@ -155,9 +217,75 @@ class PlayScreen(Screen):
         chord = self.state_machine.current_chord or '空弦 EADGBE'
         ir = '开' if self.ctx.engine.ir_enabled() else '关'
         mode = '自由演奏' if self.ctx.free_play else f'曲目: {self.ctx.current_song}'
-        text = f'{mode}    和弦: {chord}    力度: {self.ctx.velocity:.2f}    IR: {ir}'
+        r = self.ctx.rhythm
+        text = f'{mode}    和弦: {chord}    节奏: {r.pattern} {int(r.bpm)}BPM    IR: {ir}'
         label = self.font.render(text, True, TEXT)
         surface.blit(label, (x, y + h + 12))
+
+    @staticmethod
+    def _fade(color, alpha):
+        a = max(0.0, min(1.0, alpha))
+        return (int(color[0] * a), int(color[1] * a), int(color[2] * a))
+
+    def _draw_guitar(self, surface):
+        x, y, w, h = self.GUITAR_PANEL
+        pygame.draw.rect(surface, (10, 10, 14), (x, y, w, h), 0, border_radius=8)
+        pygame.draw.rect(surface, MUTED_TEXT, (x, y, w, h), 1, border_radius=8)
+
+        title = self.font.render('吉他指板', True, TEXT)
+        surface.blit(title, (x + 16, y + 8))
+
+        chord = self.ctx.rhythm.current_chord
+        chord_label = self.small_font.render(chord or '空弦 EADGBE', True, MUTED_TEXT)
+        surface.blit(chord_label, (x + 16, y + 34))
+
+        nut_y = y + 110
+        fret_h = 38
+        string_xs = [x + 40 + i * 36 for i in range(6)]
+        bottom = nut_y + 5 * fret_h
+
+        # 品线 + 琴枕
+        for j in range(6):
+            yy = nut_y + j * fret_h
+            if j == 0:
+                pygame.draw.line(surface, (200, 180, 150), (x + 20, yy), (x + w - 20, yy), 2)
+            else:
+                pygame.draw.line(surface, (90, 90, 100), (x + 20, yy), (x + w - 20, yy), 1)
+        # 品号
+        for j in range(1, 6):
+            num = self.small_font.render(str(j), True, MUTED_TEXT)
+            surface.blit(num, (x + 10, nut_y + (j - 1) * fret_h + fret_h // 2 - 8))
+
+        fingering = CHORD_FINGERING.get(chord) if chord else [0] * 6
+        for i in range(6):
+            sx = string_xs[i]
+            pygame.draw.line(surface, (140, 140, 150), (sx, nut_y), (sx, bottom), 1)
+            exc = float(self._string_exc[i])
+            if exc > 0.01:
+                amp = exc * 5.0
+                pts = [(int(sx + amp * math.sin(2 * math.pi * self._str_freq[i] * self._anim_t + self._str_phase[i])),
+                        int(nut_y + (bottom - nut_y) * k / 20)) for k in range(21)]
+                pygame.draw.lines(surface, ACCENT, False, pts, 2)
+            fret = fingering[i]
+            if fret is None or fret < 0:
+                xl = self.small_font.render('X', True, (220, 90, 90))
+                surface.blit(xl, (sx - 6, nut_y - 24))
+            elif fret == 0:
+                pygame.draw.circle(surface, TEXT, (sx, nut_y - 12), 5, 1)
+            else:
+                cy = nut_y + (fret - 1) * fret_h + fret_h // 2
+                pygame.draw.circle(surface, ACCENT, (sx, cy), 7)
+
+        # 扫弦方向箭头（右上角）
+        if self._arrow_dir and self._arrow_timer > 0:
+            alpha = min(1.0, self._arrow_timer / 0.15)
+            color = self._fade(ACCENT, alpha)
+            cx, cy = x + w - 32, y + 32
+            if self._arrow_dir == 'down':
+                pts = [(cx, cy - 11), (cx - 11, cy + 9), (cx + 11, cy + 9)]
+            else:
+                pts = [(cx, cy + 11), (cx - 11, cy - 9), (cx + 11, cy - 9)]
+            pygame.draw.polygon(surface, color, pts)
 
     def _draw_waterfall(self, surface):
         x, y, w, h = self.WF_PANEL

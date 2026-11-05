@@ -6,6 +6,7 @@
 import sounddevice as sd
 
 import config
+from dsp_guitar_core.rhythm import RhythmEngine
 from dsp_guitar_core.streaming_synth import StreamingGuitarSynth
 from GUI.visual import VisualRingBuffer
 
@@ -29,6 +30,8 @@ class AppContext:
         self.ring = VisualRingBuffer(capacity=VISUAL_RING_CAPACITY)
         self.velocity = config.DEFAULT_VELOCITY if velocity is None else velocity
         self.stream = None
+        self.rhythm = RhythmEngine(self.engine, sample_rate=config.SAMPLE_RATE,
+                                   bpm=120, pattern='民谣')
 
         # 选歌 → 演奏 传递的上下文
         self.free_play = False
@@ -43,6 +46,7 @@ class AppContext:
         self.ring.write(outdata[:frames, 0])
         if self.sequencer is not None:
             self.sequencer.advance(frames)
+        self.rhythm.advance(frames)
 
     def start_audio(self):
         if self.stream is not None:
