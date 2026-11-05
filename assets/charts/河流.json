@@ -1,0 +1,347 @@
+{
+  "name": "河流",
+  "bpm": 96,
+  "events": [
+    {
+      "time_ms": 0,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 625,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 1250,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 1875,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 938,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 2188,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 2500,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 3125,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 3750,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 4375,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 3438,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 4688,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 5000,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 5625,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 6250,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 6875,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 5938,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 7188,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 7500,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 8125,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 8750,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 9375,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 8438,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 9688,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 10000,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 10625,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 11250,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 11875,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 10938,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 12188,
+      "type": "strum",
+      "chord": "A_minor",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 12500,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 13125,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 13750,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 14375,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 13438,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 14688,
+      "type": "strum",
+      "chord": "F_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 15000,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 15625,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 16250,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 16875,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 15938,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 17188,
+      "type": "strum",
+      "chord": "C_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 17500,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 18125,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 18750,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 19375,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "down",
+      "velocity": 0.7
+    },
+    {
+      "time_ms": 18438,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 19688,
+      "type": "strum",
+      "chord": "G_major",
+      "direction": "up",
+      "velocity": 0.45
+    },
+    {
+      "time_ms": 20000,
+      "type": "mute",
+      "chord": "G_major"
+    }
+  ]
+}

@@ -96,6 +96,21 @@ def run_play_mode(use_ir: bool = False, alpha: float = 0.7, rho: float = 0.997):
     controller.run()
 
 
+def run_gui_mode(use_ir: bool = False, alpha: float = 0.7, rho: float = 0.997):
+    """GUI 前端模式（调参 → 选歌 → 演奏 + 可视化）"""
+    try:
+        from GUI.app import App
+        from GUI.app_context import AppContext
+    except ImportError as e:
+        print(f"缺少 GUI 依赖: {getattr(e, 'name', e)}")
+        print("请安装: pip install pygame")
+        sys.exit(1)
+
+    ctx = AppContext(use_ir=use_ir, alpha=alpha, rho=rho)
+    app = App(ctx)
+    app.run()
+
+
 def main():
     print("=" * 50)
     print("  DSP 吉他合成器")
@@ -110,6 +125,7 @@ def main():
     parser.add_argument("--ir", action="store_true", help="演奏模式启用琴体 IR 卷积")
     parser.add_argument("--alpha", type=float, default=0.7, help="演奏模式亮度（低通系数，越大越暗）")
     parser.add_argument("--rho", type=float, default=0.997, help="演奏模式余音长度（越接近 1 越长）")
+    parser.add_argument("--gui", action="store_true", help="开启 GUI 前端模式（调参/选歌/演奏+可视化）")
     parser.add_argument("--extract", action="store_true", help="单独执行频谱包络提取")
     args = parser.parse_args()
 
@@ -124,7 +140,9 @@ def main():
     print(f"已加载包络数据: {config.ENVELOPE_DATA_PATH}")
 
     # 根据参数选择运行模式
-    if args.play:
+    if args.gui:
+        run_gui_mode(use_ir=args.ir, alpha=args.alpha, rho=args.rho)
+    elif args.play:
         run_play_mode(use_ir=args.ir, alpha=args.alpha, rho=args.rho)
     else:
         run_default_mode()

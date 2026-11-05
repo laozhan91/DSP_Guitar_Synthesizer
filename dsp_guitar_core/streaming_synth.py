@@ -30,7 +30,7 @@ class KSVoice:
     """单根弦的 Karplus-Strong 延迟线状态"""
 
     __slots__ = ('freq', 'group', 'n_delay', 'delay', 'idx',
-                 'alpha', 'rho', 'energy', '_seg', '_seg_next')
+                 'alpha', 'rho', 'energy', 'muted', '_seg', '_seg_next')
 
     def __init__(self, freq, group, alpha, rho, sample_rate):
         self.freq = float(freq)
@@ -41,6 +41,7 @@ class KSVoice:
         self.alpha = alpha
         self.rho = rho
         self.energy = 1.0  # 当前能量，低于阈值后被引擎淘汰
+        self.muted = False  # 是否已制音（制音后不再跟随全局 alpha/rho 调参）
         # 预分配块级运算缓冲，避免回调内动态分配
         self._seg = np.empty(4096, dtype=np.float32)
         self._seg_next = np.empty(4096, dtype=np.float32)
@@ -65,6 +66,7 @@ class KSVoice:
     def mute(self):
         """制音：让余音快速衰减（保留少量平滑，避免硬切爆音）"""
         self.rho = 0.5
+        self.muted = True
 
     def render(self, out, frames):
         """块级向量化推进 KS 递推，把本弦输出累加到 out。
@@ -139,13 +141,41 @@ class StreamingGuitarSynth:
         # 预分配混音缓冲（blocksize 上限，避免回调内分配）
         self._buf = np.zeros(4096, dtype=np.float32)
 
-        # 可选琴体 IR（分块 FIR 状态）
-        self._ir = None
-        self._zi = None
-        if use_ir:
-            from .synthesizer import generate_synthetic_ir
-            self._ir = generate_synthetic_ir(sample_rate=sample_rate).astype(np.float64)
-            self._zi = np.zeros(len(self._ir) - 1, dtype=np.float64)
+        # 可选琴体 IR（分块 FIR 状态）：预生成 IR 核与状态缓冲，运行时只切开关
+        from .synthesizer import generate_synthetic_ir
+        self._ir_kernel = generate_synthetic_ir(sample_rate=sample_rate).astype(np.float64)
+        self._ir_enabled = bool(use_ir)
+        self._zi = np.zeros(len(self._ir_kernel) - 1, dtype=np.float64)
+        self._pending_ir_reset = False
+
+        # 运行时参数（GUI/按键线程写，音频回调线程读/应用）
+        self._need_voice_update = False
+
+    # --------------------------------------------------
+    # 运行时参数（GUI/按键线程调用，线程安全）
+    # --------------------------------------------------
+
+    def set_alpha(self, alpha):
+        """亮度：越大越暗。新扫弦立即生效，已发声部在回调线程跟随。"""
+        self.alpha = float(alpha)
+        self._need_voice_update = True
+
+    def set_rho(self, rho):
+        """余音：越接近 1 越长。新扫弦立即生效，已发声部在回调线程跟随。"""
+        self.rho = float(rho)
+        self._need_voice_update = True
+
+    def set_master_gain(self, gain):
+        self.master_gain = float(gain)
+
+    def enable_ir(self, enabled):
+        """运行时开关琴体 IR（切换时在回调线程复位 FIR 状态）"""
+        self._ir_enabled = bool(enabled)
+        if self._ir_enabled:
+            self._pending_ir_reset = True
+
+    def ir_enabled(self):
+        return self._ir_enabled
 
     # --------------------------------------------------
     # 按键线程调用：只投递命令（O(1) 加锁）
@@ -176,6 +206,14 @@ class StreamingGuitarSynth:
             elif isinstance(ev, MuteCommand):
                 self._do_mute(ev)
 
+        # 2.5 应用运行时参数：已发声部跟随 alpha/rho（制音中的声部除外）
+        if self._need_voice_update:
+            self._need_voice_update = False
+            for v in self.voices:
+                if not v.muted:
+                    v.alpha = self.alpha
+                    v.rho = self.rho
+
         # 3. 渲染（混音缓冲预分配，先清零）
         if frames > len(self._buf):
             self._buf = np.zeros(frames, dtype=np.float32)
@@ -192,8 +230,11 @@ class StreamingGuitarSynth:
             i -= 1
 
         # 5. 可选琴体 FIR（保持状态的分块卷积）
-        if self._ir is not None:
-            filtered, self._zi = lfilter(self._ir, [1.0], buf, zi=self._zi)
+        if self._ir_enabled:
+            if self._pending_ir_reset:
+                self._zi.fill(0.0)
+                self._pending_ir_reset = False
+            filtered, self._zi = lfilter(self._ir_kernel, [1.0], buf, zi=self._zi)
             buf = filtered.astype(np.float32)
 
         # 6. 软限幅 + 主增益（全程就地计算，无临时分配）
