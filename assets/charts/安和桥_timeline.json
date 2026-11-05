@@ -1,0 +1,326 @@
+{
+  "file": "宋冬野 - 安和桥.wav",
+  "sample_rate": 44100,
+  "chord_segments": [
+    {
+      "start": 0.0,
+      "end": 7.43,
+      "chord": "D_major"
+    },
+    {
+      "start": 7.43,
+      "end": 11.15,
+      "chord": "C_major"
+    },
+    {
+      "start": 11.15,
+      "end": 14.86,
+      "chord": "D_major"
+    },
+    {
+      "start": 14.86,
+      "end": 18.58,
+      "chord": "C_major"
+    },
+    {
+      "start": 18.58,
+      "end": 25.08,
+      "chord": "D_major"
+    },
+    {
+      "start": 25.08,
+      "end": 29.72,
+      "chord": "D_major"
+    },
+    {
+      "start": 29.72,
+      "end": 33.44,
+      "chord": "C_major"
+    },
+    {
+      "start": 33.44,
+      "end": 37.15,
+      "chord": "D_major"
+    },
+    {
+      "start": 37.15,
+      "end": 39.01,
+      "chord": "G_major"
+    },
+    {
+      "start": 39.01,
+      "end": 40.87,
+      "chord": "D_major"
+    },
+    {
+      "start": 40.87,
+      "end": 43.65,
+      "chord": "E_minor"
+    },
+    {
+      "start": 43.65,
+      "end": 48.3,
+      "chord": "D_major"
+    },
+    {
+      "start": 48.3,
+      "end": 52.94,
+      "chord": "G_major"
+    },
+    {
+      "start": 52.94,
+      "end": 55.73,
+      "chord": "D_major"
+    },
+    {
+      "start": 55.73,
+      "end": 58.51,
+      "chord": "E_minor"
+    },
+    {
+      "start": 58.51,
+      "end": 62.23,
+      "chord": "D_major"
+    },
+    {
+      "start": 62.23,
+      "end": 65.94,
+      "chord": "E_minor"
+    },
+    {
+      "start": 65.94,
+      "end": 69.66,
+      "chord": "G_major"
+    },
+    {
+      "start": 69.66,
+      "end": 73.38,
+      "chord": "D_major"
+    },
+    {
+      "start": 73.38,
+      "end": 81.73,
+      "chord": "G_major"
+    },
+    {
+      "start": 81.73,
+      "end": 84.52,
+      "chord": "C_major"
+    },
+    {
+      "start": 84.52,
+      "end": 91.95,
+      "chord": "D_major"
+    },
+    {
+      "start": 91.95,
+      "end": 95.67,
+      "chord": "E_minor"
+    },
+    {
+      "start": 95.67,
+      "end": 97.52,
+      "chord": "G_major"
+    },
+    {
+      "start": 97.52,
+      "end": 99.38,
+      "chord": "D_major"
+    },
+    {
+      "start": 99.38,
+      "end": 104.03,
+      "chord": "E_minor"
+    },
+    {
+      "start": 104.03,
+      "end": 106.81,
+      "chord": "D_major"
+    },
+    {
+      "start": 106.81,
+      "end": 112.38,
+      "chord": "G_major"
+    },
+    {
+      "start": 112.38,
+      "end": 114.24,
+      "chord": "D_major"
+    },
+    {
+      "start": 114.24,
+      "end": 118.89,
+      "chord": "E_minor"
+    },
+    {
+      "start": 118.89,
+      "end": 121.67,
+      "chord": "D_major"
+    },
+    {
+      "start": 121.67,
+      "end": 125.39,
+      "chord": "E_minor"
+    },
+    {
+      "start": 125.39,
+      "end": 127.25,
+      "chord": "C_major"
+    },
+    {
+      "start": 127.25,
+      "end": 129.1,
+      "chord": "D_major"
+    },
+    {
+      "start": 129.1,
+      "end": 130.96,
+      "chord": "E_minor"
+    },
+    {
+      "start": 130.96,
+      "end": 136.53,
+      "chord": "D_major"
+    },
+    {
+      "start": 136.53,
+      "end": 138.39,
+      "chord": "G_major"
+    },
+    {
+      "start": 138.39,
+      "end": 142.11,
+      "chord": "D_major"
+    },
+    {
+      "start": 142.11,
+      "end": 148.61,
+      "chord": "G_major"
+    },
+    {
+      "start": 148.61,
+      "end": 151.39,
+      "chord": "D_major"
+    },
+    {
+      "start": 151.39,
+      "end": 154.18,
+      "chord": "E_minor"
+    },
+    {
+      "start": 154.18,
+      "end": 156.04,
+      "chord": "C_major"
+    },
+    {
+      "start": 156.04,
+      "end": 160.68,
+      "chord": "E_minor"
+    },
+    {
+      "start": 160.68,
+      "end": 166.25,
+      "chord": "D_major"
+    },
+    {
+      "start": 166.25,
+      "end": 171.83,
+      "chord": "G_major"
+    },
+    {
+      "start": 171.83,
+      "end": 174.61,
+      "chord": "E_minor"
+    },
+    {
+      "start": 174.61,
+      "end": 181.12,
+      "chord": "D_major"
+    },
+    {
+      "start": 181.12,
+      "end": 183.9,
+      "chord": "E_minor"
+    },
+    {
+      "start": 183.9,
+      "end": 185.76,
+      "chord": "D_major"
+    },
+    {
+      "start": 185.76,
+      "end": 190.4,
+      "chord": "E_minor"
+    },
+    {
+      "start": 190.4,
+      "end": 194.12,
+      "chord": "D_major"
+    },
+    {
+      "start": 194.12,
+      "end": 197.83,
+      "chord": "G_major"
+    },
+    {
+      "start": 197.83,
+      "end": 200.62,
+      "chord": "D_major"
+    },
+    {
+      "start": 200.62,
+      "end": 206.19,
+      "chord": "E_minor"
+    },
+    {
+      "start": 206.19,
+      "end": 209.91,
+      "chord": "G_major"
+    },
+    {
+      "start": 209.91,
+      "end": 214.55,
+      "chord": "E_minor"
+    },
+    {
+      "start": 214.55,
+      "end": 219.2,
+      "chord": "C_major"
+    },
+    {
+      "start": 219.2,
+      "end": 221.98,
+      "chord": "G_major"
+    },
+    {
+      "start": 221.98,
+      "end": 225.7,
+      "chord": "C_major"
+    },
+    {
+      "start": 225.7,
+      "end": 228.48,
+      "chord": "G_major"
+    },
+    {
+      "start": 228.48,
+      "end": 233.13,
+      "chord": "C_major"
+    },
+    {
+      "start": 233.13,
+      "end": 236.84,
+      "chord": "G_major"
+    },
+    {
+      "start": 236.84,
+      "end": 240.56,
+      "chord": "E_minor"
+    },
+    {
+      "start": 240.56,
+      "end": 249.85,
+      "chord": "G_major"
+    }
+  ]
+}

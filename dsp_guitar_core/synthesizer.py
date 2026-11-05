@@ -704,6 +704,8 @@ CHORD_FREQUENCIES = {
     'C_major':  get_chord_frequencies('C', 'major'),
     'D_major':  get_chord_frequencies('D', 'major'),
     'E_major':  get_chord_frequencies('E', 'major'),
+    'E_minor':  get_chord_frequencies('E', 'minor'),
+    'A_major':  get_chord_frequencies('A', 'major'),
     'F_major':  get_chord_frequencies('F', 'major'),
     'G_major':  get_chord_frequencies('G', 'major'),
 }

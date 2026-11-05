@@ -11,12 +11,10 @@ from dsp_guitar_core.synthesizer import CHORD_FREQUENCIES
 
 FREE_PLAY = '自由演奏'
 SONGS = [
-    {'name': '星空', 'bpm': 120, 'preview_chord': 'C_major',
-     'difficulties': ['EASY', 'HARD', 'MASTER'], 'color': (90, 130, 210)},
-    {'name': '河流', 'bpm': 96, 'preview_chord': 'A_minor',
-     'difficulties': ['EASY', 'HARD'], 'color': (95, 180, 140)},
-    {'name': '森林', 'bpm': 140, 'preview_chord': 'G_major',
-     'difficulties': ['EASY', 'HARD', 'MASTER'], 'color': (210, 140, 90)},
+    {'name': '安和桥', 'bpm': 63, 'preview_chord': 'E_minor',
+     'difficulties': ['EASY'], 'color': (200, 120, 60),
+     'backing': os.path.join(config.ASSETS_DIR, 'BGM', '宋冬野 - 安和桥.wav'),
+     'timeline': os.path.join(config.ASSETS_DIR, 'charts', '安和桥_timeline.json')},
 ]
 
 
@@ -40,7 +38,8 @@ class SongSelectScreen(Screen):
              'difficulties': s['difficulties'], 'diff_index': 0,
              'color': s['color'], 'free': False,
              'preview_chord': s['preview_chord'],
-             'chart': os.path.join(config.ASSETS_DIR, 'charts', s['name'] + '.json')}
+             'backing': s['backing'],
+             'timeline': s['timeline']}
             for s in SONGS
         ]
         self.index = 0
@@ -81,12 +80,26 @@ class SongSelectScreen(Screen):
         entry = self.entries[self.index]
         self.ctx.free_play = entry['free']
         self.ctx.current_song = None if entry['free'] else entry['name']
-        self.ctx.current_chart = None if entry['free'] else entry['chart']
+        self.ctx.backing_path = None if entry['free'] else entry.get('backing')
+        self.ctx.chord_segments = [] if entry['free'] else self._load_timeline(entry.get('timeline'))
         return 'switch:play'
+
+    @staticmethod
+    def _load_timeline(path):
+        if not path:
+            return []
+        import json
+        try:
+            with open(path, encoding='utf-8') as f:
+                data = json.load(f)
+            return data.get('chord_segments', [])
+        except Exception:
+            return []
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
+                self.ctx.stop_backing()
                 return 'switch:main'
             if event.key in (pygame.K_DOWN, pygame.K_s):
                 self._move(1)

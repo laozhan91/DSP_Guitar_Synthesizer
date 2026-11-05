@@ -12,12 +12,15 @@ from dsp_guitar_core.performance import PerformanceStateMachine, StrumCommand, M
 from dsp_guitar_core.rhythm import PATTERN_NAMES
 from dsp_guitar_core.synthesizer import CHORD_FREQUENCIES, OPEN_STRING_FREQUENCIES
 
+# 安和桥（G 调）和弦映射：Em / D / G / C
 KEY_CHORD = {
-    pygame.K_a: 'A_minor',
-    pygame.K_s: 'C_major',
+    pygame.K_a: 'E_minor',
+    pygame.K_s: 'D_major',
     pygame.K_d: 'G_major',
-    pygame.K_f: 'F_major',
+    pygame.K_f: 'C_major',
 }
+# 和弦 → 按键字母
+CHORD_TO_KEY = {chord: pygame.key.name(key).upper() for key, chord in KEY_CHORD.items()}
 
 N_BARS = 96
 F_MIN = 60.0
@@ -52,6 +55,7 @@ class PlayScreen(Screen):
         self._last_strum_count = self.ctx.rhythm.strum_count
         self._arrow_dir = None
         self._arrow_timer = 0.0
+        self._seeking = False
 
     def on_enter(self):
         # 自动演奏暂不启用：后续加入歌曲音频后，再按需创建 SongSequencer 挂到 ctx.sequencer
@@ -98,9 +102,19 @@ class PlayScreen(Screen):
         i = names.index(self.ctx.rhythm.pattern)
         self.ctx.rhythm.set_pattern(names[(i + d) % len(names)])
 
+    def _seek_to(self, x):
+        r = self.PROGRESS_RECT
+        dur = self.ctx.backing_duration()
+        if dur <= 0:
+            return
+        frac = (x - r.x) / r.width
+        frac = max(0.0, min(1.0, frac))
+        self.ctx.seek_backing(frac * dur)
+
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
+                self.ctx.stop_backing()
                 return 'switch:song_select'
             if event.key in KEY_CHORD:
                 self._chord_down(KEY_CHORD[event.key])
@@ -113,9 +127,19 @@ class PlayScreen(Screen):
                 self.ctx.rhythm.set_bpm(max(60, self.ctx.rhythm.bpm - 10))
             elif event.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
                 self.ctx.rhythm.set_bpm(min(200, self.ctx.rhythm.bpm + 10))
+            elif event.key == pygame.K_b:
+                self.ctx.toggle_backing()
         elif event.type == pygame.KEYUP:
             if event.key in KEY_CHORD:
                 self._chord_up(KEY_CHORD[event.key])
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.PROGRESS_RECT.collidepoint(event.pos):
+                self._seeking = True
+                self._seek_to(event.pos[0])
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._seeking = False
+        elif event.type == pygame.MOUSEMOTION and self._seeking:
+            self._seek_to(event.pos[0])
         return None
 
     def update(self, dt):
@@ -136,9 +160,10 @@ class PlayScreen(Screen):
         self._string_exc = np.maximum(self._string_exc, w)
 
     # ---- 布局常量（屏幕 960x540）----
-    PANEL = (60, 86, 560, 240)          # 频谱卡片
-    WF_PANEL = (60, 338, 560, 160)      # STFT 瀑布图卡片
-    GUITAR_PANEL = (640, 86, 260, 412)  # 吉他指板面板
+    PANEL = (60, 86, 560, 230)          # 频谱卡片
+    WF_PANEL = (60, 326, 560, 150)      # STFT 瀑布图卡片
+    GUITAR_PANEL = (640, 86, 260, 390)  # 吉他指板面板
+    PROGRESS_RECT = pygame.Rect(60, 510, 700, 14)  # 播放进度条
     AXIS_LEFT, AXIS_RIGHT, AXIS_TOP, AXIS_BOTTOM = 52, 10, 30, 28
     WF_AXIS_LEFT, WF_AXIS_RIGHT, WF_AXIS_TOP, WF_AXIS_BOTTOM = 46, 8, 24, 4
     DB_MIN, DB_MAX = -80.0, 0.0
@@ -157,12 +182,13 @@ class PlayScreen(Screen):
         title = self.big_font.render(title_text, True, TEXT)
         surface.blit(title, (30, 20))
         hint = self.small_font.render(
-            'A/S/D/F 按住和弦自动扫弦  ·  [ ] 切换节奏  ·  -/= 调BPM  ·  Esc 返回', True, MUTED_TEXT)
+            'A/S/D/F 和弦  [ ] 节奏  -/= BPM  B 伴奏  Esc 返回', True, MUTED_TEXT)
         surface.blit(hint, (30, 54))
         self._draw_spectrum(surface)
         self._draw_waterfall(surface)
         self._draw_guitar(surface)
         self._draw_status(surface)
+        self._draw_progress(surface)
 
     def _draw_spectrum(self, surface):
         x, y, w, h = self.PANEL
@@ -214,18 +240,52 @@ class PlayScreen(Screen):
 
     def _draw_status(self, surface):
         x, y, w, h = self.WF_PANEL
-        chord = self.state_machine.current_chord or '空弦 EADGBE'
+        held = self.state_machine.current_chord
+        held_disp = CHORD_TO_KEY.get(held, held) if held else '空弦'
         ir = '开' if self.ctx.engine.ir_enabled() else '关'
+        backing = '开' if self.ctx.backing is not None else '关'
         mode = '自由演奏' if self.ctx.free_play else f'曲目: {self.ctx.current_song}'
         r = self.ctx.rhythm
-        text = f'{mode}    和弦: {chord}    节奏: {r.pattern} {int(r.bpm)}BPM    IR: {ir}'
+        text = f'{mode}  按:{held_disp}  {r.pattern}{int(r.bpm)}BPM  伴奏:{backing}  IR:{ir}'
         label = self.font.render(text, True, TEXT)
-        surface.blit(label, (x, y + h + 12))
+        surface.blit(label, (x, y + h + 6))
+
+    def _draw_progress(self, surface):
+        r = self.PROGRESS_RECT
+        dur = self.ctx.backing_duration()
+        pos = self.ctx.backing_position()
+        pygame.draw.rect(surface, (30, 30, 40), r, border_radius=4)
+        if dur > 0:
+            frac = max(0.0, min(1.0, pos / dur))
+            fill = pygame.Rect(r.x, r.y, int(r.width * frac), r.height)
+            pygame.draw.rect(surface, ACCENT, fill, border_radius=4)
+        pygame.draw.rect(surface, MUTED_TEXT, r, 1, border_radius=4)
+        t = f'{int(pos // 60):02d}:{int(pos % 60):02d} / {int(dur // 60):02d}:{int(dur % 60):02d}'
+        label = self.small_font.render(t, True, TEXT)
+        surface.blit(label, (r.x + r.width + 12, r.y - 4))
 
     @staticmethod
     def _fade(color, alpha):
         a = max(0.0, min(1.0, alpha))
         return (int(color[0] * a), int(color[1] * a), int(color[2] * a))
+
+    def _expected_chord(self):
+        if not self.ctx.chord_segments:
+            return None
+        t = self.ctx.backing_position()
+        for seg in self.ctx.chord_segments:
+            if seg['start'] <= t < seg['end']:
+                return seg['chord']
+        return None
+
+    def _next_chord_info(self):
+        if not self.ctx.chord_segments:
+            return None
+        t = self.ctx.backing_position()
+        for seg in self.ctx.chord_segments:
+            if seg['start'] > t:
+                return seg['chord'], seg['start'] - t
+        return None
 
     def _draw_guitar(self, surface):
         x, y, w, h = self.GUITAR_PANEL
@@ -235,9 +295,22 @@ class PlayScreen(Screen):
         title = self.font.render('吉他指板', True, TEXT)
         surface.blit(title, (x + 16, y + 8))
 
-        chord = self.ctx.rhythm.current_chord
-        chord_label = self.small_font.render(chord or '空弦 EADGBE', True, MUTED_TEXT)
-        surface.blit(chord_label, (x + 16, y + 34))
+        held = self.ctx.rhythm.current_chord
+        expected = self._expected_chord()
+        target = expected if expected else held
+        if expected:
+            letter = CHORD_TO_KEY.get(expected)
+            prompt = self.font.render(f'按 {letter}' if letter else '按 ?', True, ACCENT)
+        else:
+            prompt = self.small_font.render(held or '空弦 EADGBE', True, MUTED_TEXT)
+        surface.blit(prompt, (x + 16, y + 34))
+
+        nxt = self._next_chord_info()
+        if nxt:
+            next_chord, sec = nxt
+            n_txt = CHORD_TO_KEY.get(next_chord, next_chord)
+            nlabel = self.small_font.render(f'下一: {n_txt}  {sec:.1f}s', True, MUTED_TEXT)
+            surface.blit(nlabel, (x + 16, y + 58))
 
         nut_y = y + 110
         fret_h = 38
@@ -256,7 +329,7 @@ class PlayScreen(Screen):
             num = self.small_font.render(str(j), True, MUTED_TEXT)
             surface.blit(num, (x + 10, nut_y + (j - 1) * fret_h + fret_h // 2 - 8))
 
-        fingering = CHORD_FINGERING.get(chord) if chord else [0] * 6
+        fingering = CHORD_FINGERING.get(target) if target else [0] * 6
         for i in range(6):
             sx = string_xs[i]
             pygame.draw.line(surface, (140, 140, 150), (sx, nut_y), (sx, bottom), 1)
