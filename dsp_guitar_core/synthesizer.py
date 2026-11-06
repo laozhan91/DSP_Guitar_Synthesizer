@@ -760,11 +760,11 @@ def generate_synthetic_ir(
     # 密集模态频率，对数刻度均匀分布
     freqs = np.geomspace(f_min, f_max, n_modes)
 
-    # 振幅随频率快速下降：低频占优，突出温暖感
-    amplitudes = (freqs / f_min) ** -0.7
+    # 振幅随频率温和下降：低频略占优，避免低频过爆
+    amplitudes = (freqs / f_min) ** -0.4
 
     # 衰减率随频率上升：高频更快衰减，整体快速耗散避免拖尾
-    decays = 400.0 + (freqs - f_min) / (f_max - f_min) * 800.0  # 400 ~ 1200
+    decays = 500.0 + (freqs - f_min) / (f_max - f_min) * 700.0  # 500 ~ 1200
 
     # 随机相位，避免整齐的谐波叠加
     phases = rng.uniform(0.0, 2.0 * np.pi, n_modes)
@@ -777,10 +777,24 @@ def generate_synthetic_ir(
         # 指数衰减正弦模态: a * exp(-d*t) * sin(2*pi*f*t + p)
         ir += (a * np.exp(-d * t) * np.sin(2.0 * np.pi * f * t + p)).astype(np.float32)
 
-    # 归一化到 [-1, 1]
-    peak = np.max(np.abs(ir))
-    if peak > 0:
-        ir = ir / peak
+    # 淡入淡出，消除开头咔哒声与结尾毛刺
+    fade_in = max(1, int(0.0005 * sample_rate))     # 0.5ms
+    fade_out = max(1, int(0.0010 * sample_rate))    # 1ms
+    env = np.ones(n, dtype=np.float32)
+    env[:fade_in] = np.linspace(0.0, 1.0, fade_in, dtype=np.float32)
+    if n > fade_out:
+        env[-fade_out:] = np.linspace(1.0, 0.0, fade_out, dtype=np.float32)
+    ir *= env
+
+    # 去直流：短窗截断的低频模态会产生直流偏置，卷积后变成低频闷爆，必须去掉
+    ir -= np.mean(ir)
+
+    # 频响归一化：只做染色不放大（峰值频响 0dB），避免低频闷爆
+    spec = np.abs(np.fft.rfft(ir, n=max(4096, n)))
+    fpeak = float(np.max(spec))
+    if fpeak > 0:
+        ir = ir / fpeak
+    ir *= 0.8
 
     return ir.astype(np.float32)
 
