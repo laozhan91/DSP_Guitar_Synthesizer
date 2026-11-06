@@ -23,8 +23,8 @@ class RhythmStep:
 
 # 16 分网格（一小节 16 槽）上的扫弦点：[(槽位, 方向, 力度)]
 PATTERNS = {
-    '安和桥': [(0, 'down', 0.70), (4, 'down', 0.60), (8, 'down', 0.60),
-              (12, 'down', 0.55), (14, 'up', 0.50)],
+    '安和桥': [(0, 'down', 0.60), (4, 'down', 0.50), (8, 'down', 0.50),
+              (10, 'up', 0.40)],  # 下空 下空 下上
     '民谣': [(0, 'down', 0.70), (4, 'down', 0.60), (6, 'up', 0.50),
              (8, 'up', 0.50), (12, 'down', 0.60), (14, 'up', 0.50)],
     '8分': [(0, 'down', 0.70), (2, 'up', 0.50), (4, 'down', 0.70),
@@ -69,6 +69,7 @@ class RhythmEngine:
         self.current_chord: Optional[str] = None
         self.last_direction: Optional[str] = None
         self.strum_count = 0
+        self.velocity_scale = 1.0
         self._steps = _build_steps(pattern, self.bpm, sample_rate)
         self._step = 0
         self._remaining = self._steps[0].samples if self._steps else 0
@@ -106,6 +107,7 @@ class RhythmEngine:
     def _fire(self, step: RhythmStep):
         group = self.current_chord
         freqs = self.chord_freqs[group]
-        self.engine.strum(StrumCommand(group, freqs, step.direction, step.velocity))
+        vel = min(1.0, step.velocity * self.velocity_scale)
+        self.engine.strum(StrumCommand(group, freqs, step.direction, vel))
         self.last_direction = step.direction
         self.strum_count += 1

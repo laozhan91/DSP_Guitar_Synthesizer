@@ -56,6 +56,9 @@ class PlayScreen(Screen):
         self._arrow_dir = None
         self._arrow_timer = 0.0
         self._seeking = False
+        self._vol_dragging = False
+        gx, gy, gw, gh = self.GUITAR_PANEL
+        self.vol_rect = pygame.Rect(gx + 20, gy + 326, gw - 40, 12)
 
     def on_enter(self):
         # 自动演奏暂不启用：后续加入歌曲音频后，再按需创建 SongSequencer 挂到 ctx.sequencer
@@ -80,7 +83,8 @@ class PlayScreen(Screen):
         self._held.append(name)
         for cmd in self.state_machine.handle_chord_press(name):
             self._dispatch(cmd)
-        self.ctx.rhythm.set_chord(name)
+        if not self.ctx.free_play:
+            self.ctx.rhythm.set_chord(name)
 
     def _chord_up(self, name):
         if name not in self._held:
@@ -90,12 +94,22 @@ class PlayScreen(Screen):
         if active is None:
             for cmd in self.state_machine.handle_chord_release(name):
                 self._dispatch(cmd)
-            self.ctx.rhythm.set_chord(None)
+            if not self.ctx.free_play:
+                self.ctx.rhythm.set_chord(None)
         elif active != name:
             # 回到之前还按着的和弦（换弦回落）
             for cmd in self.state_machine.handle_chord_press(active):
                 self._dispatch(cmd)
-            self.ctx.rhythm.set_chord(active)
+            if not self.ctx.free_play:
+                self.ctx.rhythm.set_chord(active)
+
+    def _strum(self, direction):
+        """自由演奏：右手手动扫弦（. 下扫 / , 上扫）"""
+        for cmd in self.state_machine.handle_strum(direction, self.ctx.velocity):
+            self._dispatch(cmd)
+        self._arrow_dir = direction
+        self._arrow_timer = 0.35
+        self._pluck(direction)
 
     def _cycle_pattern(self, d):
         names = PATTERN_NAMES
@@ -111,6 +125,11 @@ class PlayScreen(Screen):
         frac = max(0.0, min(1.0, frac))
         self.ctx.seek_backing(frac * dur)
 
+    def _set_volume_from_x(self, x):
+        r = self.vol_rect
+        t = (x - r.x) / r.width
+        self.ctx.backing_gain = max(0.0, min(1.0, t))
+
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
@@ -118,6 +137,12 @@ class PlayScreen(Screen):
                 return 'switch:song_select'
             if event.key in KEY_CHORD:
                 self._chord_down(KEY_CHORD[event.key])
+                return None
+            if self.ctx.free_play:
+                if event.key in (pygame.K_SPACE, pygame.K_PERIOD):
+                    self._strum('down')
+                elif event.key == pygame.K_COMMA:
+                    self._strum('up')
                 return None
             if event.key == pygame.K_LEFTBRACKET:
                 self._cycle_pattern(-1)
@@ -136,10 +161,17 @@ class PlayScreen(Screen):
             if self.PROGRESS_RECT.collidepoint(event.pos):
                 self._seeking = True
                 self._seek_to(event.pos[0])
+            elif self.vol_rect.collidepoint(event.pos):
+                self._vol_dragging = True
+                self._set_volume_from_x(event.pos[0])
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self._seeking = False
-        elif event.type == pygame.MOUSEMOTION and self._seeking:
-            self._seek_to(event.pos[0])
+            self._vol_dragging = False
+        elif event.type == pygame.MOUSEMOTION:
+            if self._seeking:
+                self._seek_to(event.pos[0])
+            elif self._vol_dragging:
+                self._set_volume_from_x(event.pos[0])
         return None
 
     def update(self, dt):
@@ -181,14 +213,18 @@ class PlayScreen(Screen):
         title_text = '自由演奏' if self.ctx.free_play else f'曲目: {self.ctx.current_song}'
         title = self.big_font.render(title_text, True, TEXT)
         surface.blit(title, (30, 20))
-        hint = self.small_font.render(
-            'A/S/D/F 和弦  [ ] 节奏  -/= BPM  B 伴奏  Esc 返回', True, MUTED_TEXT)
+        if self.ctx.free_play:
+            hint_text = 'A/S/D/F 按和弦  ·  空格/句号 下扫  ·  逗号 上扫  ·  Esc 返回'
+        else:
+            hint_text = 'A/S/D/F 和弦  [ ] 节奏  -/= BPM  B 伴奏  Esc 返回'
+        hint = self.small_font.render(hint_text, True, MUTED_TEXT)
         surface.blit(hint, (30, 54))
         self._draw_spectrum(surface)
         self._draw_waterfall(surface)
         self._draw_guitar(surface)
         self._draw_status(surface)
         self._draw_progress(surface)
+        self._draw_volume(surface)
 
     def _draw_spectrum(self, surface):
         x, y, w, h = self.PANEL
@@ -246,7 +282,10 @@ class PlayScreen(Screen):
         backing = '开' if self.ctx.backing is not None else '关'
         mode = '自由演奏' if self.ctx.free_play else f'曲目: {self.ctx.current_song}'
         r = self.ctx.rhythm
-        text = f'{mode}  按:{held_disp}  {r.pattern}{int(r.bpm)}BPM  伴奏:{backing}  IR:{ir}'
+        if self.ctx.free_play:
+            text = f'{mode}  按:{held_disp}  伴奏:{backing}  IR:{ir}'
+        else:
+            text = f'{mode}  按:{held_disp}  {r.pattern}{int(r.bpm)}BPM  伴奏:{backing}  IR:{ir}'
         label = self.font.render(text, True, TEXT)
         surface.blit(label, (x, y + h + 6))
 
@@ -263,6 +302,15 @@ class PlayScreen(Screen):
         t = f'{int(pos // 60):02d}:{int(pos % 60):02d} / {int(dur // 60):02d}:{int(dur % 60):02d}'
         label = self.small_font.render(t, True, TEXT)
         surface.blit(label, (r.x + r.width + 12, r.y - 4))
+
+    def _draw_volume(self, surface):
+        r = self.vol_rect
+        pygame.draw.rect(surface, (46, 46, 58), r, border_radius=4)
+        fill = pygame.Rect(r.x, r.y, int(r.width * self.ctx.backing_gain), r.height)
+        pygame.draw.rect(surface, ACCENT, fill, border_radius=4)
+        pygame.draw.rect(surface, MUTED_TEXT, r, 1, border_radius=4)
+        label = self.small_font.render(f'伴奏音量 {int(self.ctx.backing_gain * 100)}%', True, TEXT)
+        surface.blit(label, (r.x, r.y - 20))
 
     @staticmethod
     def _fade(color, alpha):
@@ -295,7 +343,7 @@ class PlayScreen(Screen):
         title = self.font.render('吉他指板', True, TEXT)
         surface.blit(title, (x + 16, y + 8))
 
-        held = self.ctx.rhythm.current_chord
+        held = self.state_machine.current_chord
         expected = self._expected_chord()
         target = expected if expected else held
         if expected:

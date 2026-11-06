@@ -148,6 +148,20 @@ class StreamingGuitarSynth:
         self._zi = np.zeros(len(self._ir_kernel) - 1, dtype=np.float64)
         self._pending_ir_reset = False
 
+        # 吉他音色 FIR（从真实吉他录音设计，可选；存在则应用）
+        self._tone = None
+        self._tone_zi = None
+        try:
+            import os
+            import config
+            tone_path = os.path.join(config.ASSETS_DIR, 'guitar_tone.npy')
+            if os.path.isfile(tone_path):
+                tone = np.load(tone_path).astype(np.float64)
+                self._tone = tone
+                self._tone_zi = np.zeros(len(tone) - 1, dtype=np.float64)
+        except Exception:
+            pass
+
         # 运行时参数（GUI/按键线程写，音频回调线程读/应用）
         self._need_voice_update = False
 
@@ -235,6 +249,11 @@ class StreamingGuitarSynth:
                 self._zi.fill(0.0)
                 self._pending_ir_reset = False
             filtered, self._zi = lfilter(self._ir_kernel, [1.0], buf, zi=self._zi)
+            buf = filtered.astype(np.float32)
+
+        # 5.5 吉他音色滤波器（频谱整形，让 KS 更像真实吉他）
+        if self._tone is not None:
+            filtered, self._tone_zi = lfilter(self._tone, [1.0], buf, zi=self._tone_zi)
             buf = filtered.astype(np.float32)
 
         # 6. 软限幅 + 主增益（全程就地计算，无临时分配）

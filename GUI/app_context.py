@@ -33,6 +33,7 @@ class AppContext:
         self.stream = None
         self.rhythm = RhythmEngine(self.engine, sample_rate=config.SAMPLE_RATE,
                                    bpm=63, pattern='安和桥')
+        self.rhythm.velocity_scale = self.velocity
 
         # 选歌 → 演奏 传递的上下文
         self.free_play = False
@@ -105,7 +106,7 @@ class AppContext:
             return False
         if not self.backing_path:
             return False
-        self.load_backing(self.backing_path)
+        self.load_backing(self.backing_path, gain=self.backing_gain)
         return True
 
     def backing_position(self):

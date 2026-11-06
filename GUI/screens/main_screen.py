@@ -84,6 +84,7 @@ class MainScreen(Screen):
         if abs(eng.master_gain - self.gain_slider.value) > 1e-9:
             eng.set_master_gain(self.gain_slider.value)
         self.ctx.velocity = self.vel_slider.value
+        self.ctx.rhythm.velocity_scale = self.vel_slider.value
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
